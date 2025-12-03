@@ -135,6 +135,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
+      - name: Publish Release
         shell: bash
         run: |
           TARGET_REPO=${{ env.TARGET_GH_REPO }}
