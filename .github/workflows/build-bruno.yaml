@@ -131,7 +131,7 @@ jobs:
         run: |
           pwd
           ls
-          node ./scripts/build-electron.js --publish always
+          node ./scripts/build-electron.js
         shell: bash
         working-directory: source-repo
         env:
@@ -154,10 +154,7 @@ jobs:
             # Upload new artifacts
             gh release upload "$TAG_NAME" \
               ./source-repo/packages/bruno-electron/out/*.exe \
-              ./source-repo/packages/bruno-electron/out/*.zip \
               ./source-repo/packages/bruno-electron/out/*.blockmap \
-              ./source-repo/packages/bruno-electron/out/latest.yml \
-              ./source-repo/packages/bruno-electron/out/*.msi \
               --repo $TARGET_REPO --clobber
           else
             echo "Creating new release with tag $TAG_NAME"
@@ -170,9 +167,6 @@ jobs:
             # Then upload assets separately
             gh release upload "$TAG_NAME" \
               ./source-repo/packages/bruno-electron/out/*.exe \
-              ./source-repo/packages/bruno-electron/out/*.zip \
               ./source-repo/packages/bruno-electron/out/*.blockmap \
-              ./source-repo/packages/bruno-electron/out/latest.yml \
-              ./source-repo/packages/bruno-electron/out/*.msi \
               --repo $TARGET_REPO
           fi
