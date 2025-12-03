@@ -114,7 +114,7 @@ jobs:
           npm run build:bruno-common
           npm run build:bruno-converters
           npm run build:bruno-requests
-          npm run build:bruno-schema-types
+          npm run build:schema-types
           npm run build:bruno-filestore
           npm run sandbox:bundle-libraries --workspace=packages/bruno-js
           npm run build:web
