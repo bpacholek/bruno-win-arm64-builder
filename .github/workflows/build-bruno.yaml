@@ -15,6 +15,7 @@ env:
   GH_TOKEN : ${{ secrets.GH_TOKEN }}
   TARGET_GH_REPO: ${{ github.event.inputs.target_repo || 'usebruno/bruno' }}
   SOURCE_GH_REPO: ${{ github.event.inputs.source_repo || 'usebruno/bruno' }}
+  BRANCH: "windows-arm64-enabled"
 
 jobs:
   validate_packages:
@@ -61,6 +62,7 @@ jobs:
           repository: ${{ env.SOURCE_GH_REPO }}
           token: ${{ secrets.GH_TOKEN  }}
           path: source-repo
+          ref: ${{ env.BRANCH }}
 
   build:
     runs-on: windows-latest
