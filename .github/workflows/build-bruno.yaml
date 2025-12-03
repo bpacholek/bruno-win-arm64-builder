@@ -12,7 +12,7 @@ on:
         default: "bpacholek/bruno"
 
 env:
-  GITHUB_TOKEN : ${{ secrets.GITHUB_TOKEN  }}
+  GITHUB_TOKEN : ${{ secrets.GH_PAT }}
   TARGET_GH_REPO: ${{ github.event.inputs.target_repo || 'usebruno/bruno' }}
   SOURCE_GH_REPO: ${{ github.event.inputs.source_repo || 'usebruno/bruno' }}
 
