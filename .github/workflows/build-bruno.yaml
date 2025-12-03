@@ -1,0 +1,175 @@
+name: Windows Build (for testing purposes)
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: "Target GitHub repository for release"
+        required: true
+        default: "bpacholek/bruno"
+      source_repo:
+        description: "Source GitHub repository to build from"
+        required: true
+        default: "bpacholek/bruno"
+
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  TARGET_GH_REPO: ${{ github.event.inputs.target_repo || 'usebruno/bruno' }}
+  SOURCE_GH_REPO: ${{ github.event.inputs.source_repo || 'usebruno/bruno' }}
+
+jobs:
+  validate_packages:
+    runs-on: ubuntu-latest
+    env:
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Debug inputs
+        run: |
+          echo "Event type: ${{ github.event_name }}"
+          echo "Selected target repo: ${{ env.TARGET_GH_REPO }}"
+          echo "Selected source repo: ${{ env.SOURCE_GH_REPO }}"
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Validate Secrets
+        run: |
+          echo "Validating required secrets..."
+          MISSING_SECRETS=()
+
+          if [ -z "${{ secrets.GH_TOKEN }}" ]; then
+            MISSING_SECRETS+=("GH_TOKEN")
+          fi
+
+          # Report results
+          if [ ${#MISSING_SECRETS[@]} -eq 0 ]; then
+            echo "✅ All required secrets are present"
+          else
+            echo "❌ Missing required secrets:"
+            for secret in "${MISSING_SECRETS[@]}"; do
+              echo "  - $secret"
+            done
+            exit 1
+          fi
+        shell: bash
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_GH_REPO }}
+          token: ${{ secrets.GH_TOKEN }}
+          path: source-repo
+
+  build:
+    runs-on: windows-latest
+    needs: [validate_packages]
+
+    outputs:
+      tag_name: ${{ steps.set_tag_name.outputs.TAG_NAME }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_GH_REPO }}
+          token: ${{ secrets.GH_TOKEN }}
+          path: source-repo
+          ref: ${{ env.BRANCH }}
+
+      - name: Set tag name
+        id: set_tag_name
+        shell: pwsh
+        run: |
+          $VERSION = Get-Content source-repo/packages/bruno-electron/package.json | ConvertFrom-Json | Select-Object -ExpandProperty version
+          $TAG_NAME = "v$VERSION"
+          echo "TAG_NAME=$TAG_NAME" >> $env:GITHUB_ENV
+          echo "TAG_NAME=$TAG_NAME" >> $env:GITHUB_OUTPUT
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18.x"
+          cache: "npm"
+          cache-dependency-path: source-repo/package.json
+
+      - name: Install dependencies
+        run: |
+          cd source-repo
+          npm install --legacy-peer-deps || { echo 'npm install failed'; exit 1; }
+        shell: bash
+
+      - name: Add .env file
+        run: |
+          # Removed for the test build to prove ARM64
+          # echo "PUBLIC_POSTHOG_API_KEY=${{ secrets.POSTHOG_API_KEY }}" > source-repo/packages/bruno-app/.env
+          echo "PUBLIC_APP_LABEL=${{ env.TAG_NAME }}" >> source-repo/packages/bruno-app/.env
+
+      # 2.3: Build packages
+      - name: Build packages
+        run: |
+          npm run build:graphql-docs
+          npm run build:bruno-query
+          npm run build:bruno-common
+          npm run build:bruno-converters
+          npm run build:bruno-requests
+          npm run build:bruno-schema-types
+          npm run build:bruno-filestore
+          npm run sandbox:bundle-libraries --workspace=packages/bruno-js
+          npm run build:web
+        shell: bash
+        working-directory: source-repo
+        env:
+          # Removed for the test build to prove ARM64
+          # PUBLIC_POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          PUBLIC_APP_LABEL: ${{ env.TAG_NAME }}
+
+      - name: Build Windows App
+        run: |
+          pwd
+          ls
+          node ./scripts/build-electron.js
+        shell: bash
+        working-directory: source-repo
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+        shell: bash
+        run: |
+          TARGET_REPO=${{ env.TARGET_GH_REPO }}
+          TAG_NAME=${{ env.TAG_NAME }}
+          RELEASE_NAME="$TAG_NAME"
+
+          # Check if release exists
+          RELEASE_EXISTS=$(gh release view "$TAG_NAME" --repo $TARGET_REPO --json tagName --jq '.tagName' || echo "not_found")
+
+          if [ "$RELEASE_EXISTS" != "not_found" ]; then
+            echo "Release with tag $TAG_NAME already exists. Updating artifacts."
+            # Update release name
+            gh release edit "$TAG_NAME" --title "$RELEASE_NAME" --repo $TARGET_REPO
+            # Upload new artifacts
+            gh release upload "$TAG_NAME" \
+              ./source-repo/packages/bruno-electron/out/*.exe \
+              ./source-repo/packages/bruno-electron/out/*.zip \
+              ./source-repo/packages/bruno-electron/out/*.blockmap \
+              ./source-repo/packages/bruno-electron/out/latest.yml \
+              ./source-repo/packages/bruno-electron/out/*.msi \
+              --repo $TARGET_REPO --clobber
+          else
+            echo "Creating new release with tag $TAG_NAME"
+            # First create the release without any assets
+            gh release create "$TAG_NAME" \
+              --repo $TARGET_REPO \
+              --title "$RELEASE_NAME" \
+              --notes "Nightly build for $TAG_NAME"
+
+            # Then upload assets separately
+            gh release upload "$TAG_NAME" \
+              ./source-repo/packages/bruno-electron/out/*.exe \
+              ./source-repo/packages/bruno-electron/out/*.zip \
+              ./source-repo/packages/bruno-electron/out/*.blockmap \
+              ./source-repo/packages/bruno-electron/out/latest.yml \
+              ./source-repo/packages/bruno-electron/out/*.msi \
+              --repo $TARGET_REPO
+          fi
