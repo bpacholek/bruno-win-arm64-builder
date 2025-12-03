@@ -131,7 +131,7 @@ jobs:
         run: |
           pwd
           ls
-          node ./scripts/build-electron.js
+          node ./scripts/build-electron.js --publish always
         shell: bash
         working-directory: source-repo
         env:
